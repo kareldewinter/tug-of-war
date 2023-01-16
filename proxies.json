@@ -1,0 +1,56 @@
+{
+    "$schema": "http://json.schemastore.org/proxies",
+    "proxies": {
+        "getscores": {
+            "matchCondition": {
+                "route": "getscores",
+                "methods": [
+                    "POST"
+                ]
+            },
+            "backendUri": "https://%WEBSITE_HOSTNAME%/api/GetCurrentScore"
+        },
+        "incrementpoint": {
+            "matchCondition": {
+                "route": "incrementpoint",
+                "methods": [
+                    "POST"
+                ]
+            },
+            "backendUri": "https://%WEBSITE_HOSTNAME%/api/IncrementPointTrigger"
+        },
+        "root": {
+            "matchCondition": {
+                "route": "/{restOfPath}"
+            },
+            "backendUri": "https://%mycontainer_uri%/content/{restOfPath}"
+        },
+        "createteams": {
+            "matchCondition": {
+                "route": "/createteams",
+                "methods": [
+                    "POST"
+                ]
+            },
+            "backendUri": "https://%WEBSITE_HOSTNAME%/api/CreateTeamSettings"
+        },
+        "getsettings": {
+            "matchCondition": {
+                "route": "/getsettings",
+                "methods": [
+                    "GET"
+                ]
+            },
+            "backendUri": "https://%WEBSITE_HOSTNAME%/api/GetTeamSettings"
+        },
+        "default": {
+            "matchCondition": {
+                "route": "/",
+                "methods": [
+                    "GET"
+                ]
+            },
+            "backendUri": "https://%mycontainer_uri%/content/index.html"
+        }
+    }
+}

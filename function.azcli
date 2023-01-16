@@ -1,0 +1,116 @@
+############################################################################
+# Created by Karel De Winter
+# Januari 2023
+#
+# Azure Functions demo script
+#
+############################################################################
+
+# Variables
+
+unique_id=$RANDOM
+
+rg=rg-cs-function-${unique_id}
+location=eastus2
+
+
+function_app_name=func${unique_id}
+logws_name=log${unique_id}
+storage_account_name=storage${unique_id}
+
+func_version="4"
+func_runtime=node
+func_runtime_version=16
+
+apim_name=apim${unique_id}
+
+
+container_name=content
+blob_path='arm_template.json'
+
+# Resource group
+az group create -n $rg -l $location
+
+
+
+
+# [Optional] Create Log analytics workspace
+az monitor log-analytics workspace create -n $logws_name -g $rg
+logws_id=$(az resource list -g $rg -n $logws_name --query '[].id' -o tsv)
+logws_customerid=$(az monitor log-analytics workspace show -n $logws_name -g $rg --query customerId -o tsv)
+
+
+# Create Storage Account
+az storage account create -n $storage_account_name -g $rg --sku Standard_LRS --kind StorageV2
+az storage container create -n $container_name --account-name $storage_account_name --public-access blob
+storage_account_key=$(az storage account keys list -n $storage_account_name -g $rg --query '[0].value' -o tsv)
+
+# Upload /Client files to content 
+
+# Create Table teampoints and gamesettings
+az storage table create --name teampoints --account-name $storage_account_name
+az storage table create --name gamesettings --account-name $storage_account_name
+
+# Create queue scorequeue
+az storage queue create -n scorequeue --account-name $storage_account_name
+
+# Create Azure Function
+# Function app and storage account names must be unique.
+
+# Create a serverless function app in the resource group.
+# az functionapp create -n $function_app_name -g $rg --storage-account $storage_account_name --consumption-plan-location "$location" --functions-version $func_version --runtime $func_runtime --runtime-version $func_runtime_version
+az functionapp create -n $function_app_name -g $rg --storage-account $storage_account_name --consumption-plan-location "$location" --functions-version $func_version --runtime dotnet
+
+# Get the storage account connection string. 
+connstr=$(az storage account show-connection-string --name $storage_account_name --resource-group $rg --query connectionString --output tsv)
+
+# Update function app settings to connect to the storage account.
+az functionapp config appsettings set -n $function_app_name -g $rg --settings StorageConStr=$connstr
+
+
+# Get the list of Application Settings
+az functionapp config appsettings list -n $function_app_name -g $rg
+
+# Set the list of Application Settings
+az functionapp config appsettings set -n $function_app_name -g $rg --settings STORAGE_KEY=$storage_account_key
+#az functionapp config appsettings set -n $function_app_name -g $rg --settings WEBSITE_CONTENTSHARE=$storage_account_key
+az functionapp config appsettings set -n $function_app_name -g $rg --settings AzureWebJobsFeatureFlags=EnableProxies
+az functionapp config appsettings set -n $function_app_name -g $rg --settings mycontainer_uri=$storage_account_name.blob.core.windows.net
+
+
+# API Management
+az apim create --name $apim_name -g $rg -l $location --publisher-email email@mydomain.com --publisher-name "Karel De Winter" --sku-name Developer
+
+# Bind Azure Function to APIM
+
+az apim api create --service-name apim_name -g $rg --api-id getscores --path '/api' --display-name 'getscores'
+az apim api create --service-name apim_name -g $rg --api-id incrementpoint --path '/api' --display-name 'incrementpoint'
+az apim api create --service-name apim_name -g $rg --api-id root --path '/api' --display-name 'root'
+az apim api create --service-name apim_name -g $rg --api-id createteams --path '/api' --display-name 'createteams'
+az apim api create --service-name apim_name -g $rg --api-id getsettings --path '/api' --display-name 'getsettings'
+az apim api create --service-name apim_name -g $rg --api-id default --path '/api' --display-name 'default'
+
+
+
+# Local Azure Functions development
+
+func init tugofwar --javascript
+
+func new --name CreateTeamSettings --template "HTTP trigger" --authlevel "anonymous"
+func new --name GetCurrentScore --template "HTTP trigger" --authlevel "anonymous"
+func new --name GetTeamSettings --template "HTTP trigger" --authlevel "anonymous"
+func new --name IncrementPointTrigger --template "HTTP trigger" --authlevel "anonymous"
+func new --name IncrementPointUpdate --template "Azure Queue Storage trigger"
+
+
+
+###############
+#   Cleanup   #
+###############
+
+# Delete selective components
+az functionapp  delete -n $function_app_name -g $rg -y
+
+
+# Delete everything
+az group delete -n $rg -y --no-wait
